@@ -8,9 +8,14 @@ import datetime
 
 from pymycobot import MyCobot
 import rospy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int16
+
+import RPi.GPIO as GPIO
 
 
+#
+# camera and switch
+#
 
 
 
@@ -19,9 +24,16 @@ def camera():
     delay_move = 3.0
     
     
+    """Switch"""
+    switch_pin = 4
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+    GPIO.setup(switch_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+    
+    
     
     """ROS"""
-    pub = rospy.Publisher('move_enable', Bool, queue_size=10)
+    pub = rospy.Publisher('move_enable', Int16, queue_size=10)
     rospy.init_node('camera_node')
     rate = rospy.Rate(10)
     
@@ -46,6 +58,19 @@ def camera():
     start_time = time.time()
 
     while True:
+        
+        switch_input = GPIO.input(switch_pin)
+        #print('przelacznik uspienia = ', switch_input)
+        
+        if switch_input == 0:
+            pub.publish(2)
+        elif switch_input == 1:
+            pub.publish(3)
+        
+        """------------------"""
+        
+        
+        
         success, frame = cap.read()
         if not success:
             print("Cannot connect to the camera.")
@@ -85,7 +110,7 @@ def camera():
                     if elapsed_time > delay_move:
                         print('sendend message')
                         start_time = time.time()
-                        pub.publish(True)
+                        pub.publish(1) #                    impuls to start robot move
                 else:
                     start_time = time.time()
                     elapsed_time = time.time()
@@ -109,7 +134,6 @@ if __name__ == '__main__':
         pass
  
  
-
 
 
 
