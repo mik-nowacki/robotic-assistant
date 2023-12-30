@@ -4,7 +4,7 @@
 from pymycobot import MyCobot
 
 import rospy
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, Int16
 import threading
 
 import RPi.GPIO as GPIO
@@ -13,15 +13,43 @@ import time
 import ast
 
 
+# 
+awake = 1
+#
+# 0 -> spi
+# 1 -> dziala
+# 2 -> usypianie
+# 3 -> ponowna inicjalizacja
+# 4 -> gotowy po przebudzeniu
+
+
 
 
 #data.data == 1 => start move and wait for the end of process
 def callback(data, (mc, trigger)):
+    global awake
     
     if(data.data):
-        print('Receiver data = ', data.data)
-        mc.set_color(0,0,200)
-        trigger.set()
+        #print('Receiver data = ', data.data)
+        
+        if data.data == 1:
+            mc.set_color(0,0,200)
+            if awake == 4:
+                awake = 1
+            trigger.set()
+        elif data.data == 2:
+            #print('Asleep')
+            if awake != 0:
+                mc.set_color(200,0,200)
+                awake = 2 # uspienie
+                trigger.set()
+        elif data.data == 3:
+            #print('Awake')
+            if awake == 0:
+                mc.set_color(200,200,200)
+                awake = 3 # ponowna inicjalizacja
+                trigger.set()
+
 
 
 def set_pos(angle, pwm):
@@ -35,6 +63,8 @@ def set_pos(angle, pwm):
 
 
 def main():
+    global awake
+    
     # Robot initialization
     mc = MyCobot('/dev/ttyAMA0', 1000000)
 
@@ -86,6 +116,7 @@ def main():
     
     ang = mc.get_angles()
     start_pos_a = [90.61, 19.59, -88.59, -20.12, 93.69, ang[5]]
+    sleep_pos_a = [90.26, -67.5, -104.85, -2.81, 9.84, 106.78]
     
     upper_ball_pos_c = data_from_file[0]
     get_ball_pos_c = data_from_file[1]
@@ -108,44 +139,83 @@ def main():
     # Ros initialization
     rospy.init_node('robot_node')
     trigger = threading.Event()
-    rospy.Subscriber('move_enable', Bool, callback, (mc, trigger))
+    rospy.Subscriber('move_enable', Int16, callback, (mc, trigger))
     mc.set_color(0,200,0)
     
     
     
     while not rospy.is_shutdown():
-        trigger.wait()   
-        
-        #######################################################
-        mc.sync_send_coords(upper_ball_pos_c, speed, mode, timeout=1.5)
-        set_pos(g_open, pwm)
-        time.sleep(1)
-        mc.sync_send_coords(get_ball_pos_c, int(speed*0.5), mode, timeout=1.5)
-        set_pos(g_close, pwm)
-        time.sleep(1)
-        mc.sync_send_coords(unbend_pos_c, speed, mode, timeout=1.5)
-        time.sleep(1)
-        mc.sync_send_coords(leave_ball_pos_c, speed, mode, timeout=1.5)
-        set_pos(g_open, pwm)
-        time.sleep(2)
-        mc.sync_send_coords(unbend_pos_c, speed, mode, timeout=1.5)
-        time.sleep(1)
-        set_pos(g_fullclose, pwm)
-        time.sleep(1)
-        pwm.ChangeDutyCycle(0)
-        #######################################################
+        trigger.wait()
+        print('trigger.wait() end, awake -> ', awake)
 
-        mc.set_color(0,200,0)
-        trigger.clear()
+        
+        if awake == 1:
+            
+            #######################################################
+            mc.sync_send_coords(upper_ball_pos_c, speed, mode, timeout=1.5)
+            set_pos(g_open, pwm)
+            time.sleep(1)
+            mc.sync_send_coords(get_ball_pos_c, int(speed*0.5), mode, timeout=1.5)
+            set_pos(g_close, pwm)
+            time.sleep(1)
+            mc.sync_send_coords(unbend_pos_c, speed, mode, timeout=1.5)
+            time.sleep(1)
+            mc.sync_send_coords(leave_ball_pos_c, speed, mode, timeout=1.5)
+            set_pos(g_open, pwm)
+            time.sleep(2)
+            mc.sync_send_coords(unbend_pos_c, speed, mode, timeout=1.5)
+            time.sleep(1)
+            set_pos(g_fullclose, pwm)
+            time.sleep(1)
+            pwm.ChangeDutyCycle(0)
+            #######################################################
+            
+            print('WORK TIME')
+            time.sleep(1)
+            
+            mc.set_color(0,200,0)
+            trigger.clear()
     
     
+        elif awake == 2:
+            set_pos(g_fullclose, pwm)
+            time.sleep(1)
+            pwm.ChangeDutyCycle(0)
+            mc.sync_send_angles(sleep_pos_a, int(speed*0.5))
+            time.sleep(3)
+            mc.set_color(200,0,0)
+            mc.release_all_servos()
+            mc.power_off()
+            print('Robot is turned off')
+            time.sleep(0.5)
+            awake = 0 # spi
+            trigger.clear()
+            
+        elif awake == 0:
+            mc.set_color(200,0,0)
+            trigger.clear()
+            
+            
+        elif awake == 3:
+            print('Robot is turned on')
+            mc.power_on()
+            mc.set_color(200,200,200)
+            time.sleep(1)
+            mc.sync_send_angles(start_pos_a, int(speed*0.5))
+            time.sleep(1)
+            set_pos(g_fullclose, pwm)
+            time.sleep(1)
+            pwm.ChangeDutyCycle(0)
+            mc.set_color(0,200,0)
+            time.sleep(0.5)
+            awake = 4 # gotowy do pracy
+            trigger.clear()
 
 
 
 
 if __name__ == '__main__':
     main()
-
 
 
 
