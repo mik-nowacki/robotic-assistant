@@ -1,0 +1,11 @@
+Komenda otwierająca plik zawierający autostart:
+sudo nano /etc/xdg/lxsession/LXDE-pi/autostart
+
+
+Trzeba dodać tam poniższe linijki:
+point-rpi
+@lxterminal -e <COMMAND> <PATH>
+
+
+np.
+@lxterminal -e /bin/bash /home/pi/Desktop/files/launch.sh
